@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Custom Emojis</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Custom Emojis</h1>
+
+    <div class="add-emoji-section">
+      <h2>Add New Emoji</h2>
+      <p class="instruction">Paste an actual emoji character (like 😀 🎉 ❤️) not text!</p>
+      <div class="input-group">
+        <input type="text" id="emoji-input" placeholder="Paste emoji here (e.g., 😀 🎉 ❤️)" maxlength="10">
+        <input type="text" id="shortcode-input" placeholder="Shortcode (e.g., :party:)" maxlength="50">
+        <button id="add-emoji-btn">Add Emoji</button>
+      </div>
+      <div class="file-upload">
+        <label for="emoji-file" class="file-label">Or upload image</label>
+        <input type="file" id="emoji-file" accept="image/*">
+      </div>
+    </div>
+
+    <div class="emoji-list-section">
+      <h2>Your Custom Emojis</h2>
+      <div id="emoji-grid" class="emoji-grid"></div>
+      <div id="empty-state" class="empty-state">
+        No custom emojis yet. Add one above!
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

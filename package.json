@@ -1,0 +1,19 @@
+{
+  "name": "gmeet-custom-emojis",
+  "version": "1.0.0",
+  "description": "Chrome extension to add custom emojis to Google Meet",
+  "scripts": {
+    "generate-icons": "node generate-icons.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "google-meet",
+    "emojis",
+    "custom-emojis"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "canvas": "^2.11.2"
+  }
+}
