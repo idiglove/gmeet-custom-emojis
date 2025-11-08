@@ -1,7 +1,9 @@
 // Content script for Google Meet custom emojis
 let customEmojis = [];
-let emojiPicker = null;
-let reactionOverlay = null;
+
+// Toolbar tracking for injection
+let lastInjectedToolbar = null;
+let toolbarObserver = null;
 
 // WebSocket relay server connection
 let ws = null;
@@ -17,12 +19,7 @@ function loadCustomEmojis() {
   chrome.storage.sync.get(['customEmojis'], (result) => {
     customEmojis = result.customEmojis || [];
     console.log('✅ Loaded custom emojis:', customEmojis.length);
-    // Create or update the emoji picker
-    if (customEmojis.length > 0) {
-      createCustomEmojiPicker();
-    } else {
-      removeCustomEmojiPicker();
-    }
+    // The MutationObserver will automatically inject emojis when they're available
   });
 }
 
@@ -31,17 +28,12 @@ chrome.storage.onChanged.addListener((changes) => {
   if (changes.customEmojis) {
     customEmojis = changes.customEmojis.newValue || [];
     console.log('🔄 Custom emojis updated:', customEmojis.length);
-    if (customEmojis.length > 0) {
-      createCustomEmojiPicker();
-    } else {
-      removeCustomEmojiPicker();
-    }
+    // The MutationObserver will automatically inject emojis when they're available
   }
 });
 
 // Initialize
 loadCustomEmojis();
-createReactionOverlay();
 
 // Extract meeting ID from URL and connect to relay server
 function initializeRelay() {
@@ -165,13 +157,23 @@ function injectCustomEmojisIntoReactionsBar() {
 
   console.log('🔍 Looking for reactions bar...');
 
-  // Find the toolbar with aria-label="Send a reaction"
-  const toolbar = document.querySelector('div[role="toolbar"][aria-label*="reaction"]');
+  // Find the toolbar by looking for the thumbs down emoji and going up to its parent toolbar
+  const thumbsDownEmoji = document.querySelector('[data-emoji="👎"]');
 
-  if (!toolbar) {
-    console.log('❌ Reactions toolbar not found yet');
+  if (!thumbsDownEmoji) {
+    console.log('❌ Thumbs down emoji not found yet');
     return;
   }
+
+  // Go two parents up from the emoji element to get the toolbar
+  const toolbar = thumbsDownEmoji.parentElement?.parentElement;
+
+  if (!toolbar) {
+    console.log('❌ Could not find toolbar (parent structure unexpected)');
+    return;
+  }
+
+  console.log('✅ Found reactions toolbar via thumbs down emoji');
 
   // Check if we already injected into this specific toolbar instance
   const existingCustom = toolbar.querySelectorAll('.custom-emoji-container');
@@ -180,124 +182,82 @@ function injectCustomEmojisIntoReactionsBar() {
     return;
   }
 
-  console.log('✅ Found reactions toolbar');
-
-  // Find an existing emoji container to use as a reference
-  const referenceEmojiContainer = toolbar.querySelector('div[jsname="nePGOb"]');
-
-  if (!referenceEmojiContainer) {
-    console.log('❌ Could not find reference emoji container');
-    return;
-  }
-
-  console.log('✅ Found reference emoji container');
-
   // Inject each custom emoji
-  customEmojis.forEach((emoji) => {
-    console.log('➕ Injecting custom emoji:', emoji);
+  console.log('🔄 Total custom emojis to inject:', customEmojis.length, customEmojis);
+  customEmojis.forEach((emoji, index) => {
+    console.log(`➕ Injecting custom emoji ${index + 1}/${customEmojis.length}:`, emoji);
 
     const emojiValue = emoji.isImage ? emoji.shortcode : emoji.emoji;
 
-    // Create the complete structure matching Google Meet's DOM
-    // <div jsname="nePGOb">
-    const outerContainer = document.createElement('div');
-    outerContainer.setAttribute('jsname', 'nePGOb');
-    outerContainer.classList.add('custom-emoji-container');
+    // Create a simple button structure - we don't need to mimic Google's complex DOM
+    const container = document.createElement('div');
+    container.classList.add('custom-emoji-container');
+    container.style.cssText = `
+      display: inline-block;
+      margin: 0 4px;
+    `;
 
-    // <div class="nnCtR" role="none">
-    const middleContainer = document.createElement('div');
-    middleContainer.className = 'nnCtR';
-    middleContainer.setAttribute('role', 'none');
-
-    // <div jsname="qB4Txe" role="none" data-emoji="...">
-    const dataEmojiDiv = document.createElement('div');
-    dataEmojiDiv.setAttribute('jsname', 'qB4Txe');
-    dataEmojiDiv.setAttribute('role', 'none');
-    dataEmojiDiv.setAttribute('data-emoji', emojiValue);
-    dataEmojiDiv.setAttribute('jscontroller', 'I3Y0R');
-    dataEmojiDiv.setAttribute('jsaction', 'JIbuQc:aj0Jcf; contextmenu:xexox; keydown:uYT2Vb; mouseover:UI3Kjd; mouseout:EZ53sd;AHmuwe:h06R8;O22p3e:zjh6rb;touchstart:npT2md');
-
-    // <span data-is-tooltip-wrapper="true">
-    const tooltipWrapper = document.createElement('span');
-    tooltipWrapper.setAttribute('data-is-tooltip-wrapper', 'true');
-
-    // <button class="VfPpkd-Bz112c-LgbsSe yHy1rc eT1oJ sg22sf">
     const button = document.createElement('button');
-    button.className = 'VfPpkd-Bz112c-LgbsSe yHy1rc eT1oJ sg22sf';
+    button.classList.add('custom-emoji-button');
     button.setAttribute('aria-label', emojiValue);
     button.setAttribute('data-emoji', emojiValue);
-    button.setAttribute('tabindex', '-1');
-    button.setAttribute('role', 'button');
+    button.style.cssText = `
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    `;
 
-    // Add Google Meet's controller and actions to integrate with their system
-    button.setAttribute('jscontroller', 'soHxf');
-    button.setAttribute('jsaction', 'click:cOuCgd; mousedown:UX7yZ; mouseup:lbsD7e; mouseenter:tfO1Yc; mouseleave:JywGue; touchstart:p6p2H; touchmove:FwuNnf; touchend:yfqBxc; touchcancel:JMtRjd; focus:AHmuwe; blur:O22p3e; contextmenu:mg9Pef;mlnRJb:fLiPzd');
-    button.setAttribute('jsname', 'vnVdbf');
-    button.setAttribute('data-idom-class', 'yHy1rc eT1oJ sg22sf');
+    // Add hover effect
+    button.addEventListener('mouseenter', () => {
+      button.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+    });
+    button.addEventListener('mouseleave', () => {
+      button.style.backgroundColor = 'transparent';
+    });
 
-    // Add ripple effect divs (Material Design)
-    const rippleDiv1 = document.createElement('div');
-    rippleDiv1.className = 'VfPpkd-Bz112c-Jh9lGc';
-    const rippleDiv2 = document.createElement('div');
-    rippleDiv2.className = 'VfPpkd-Bz112c-J1Ukfc-LhBDec';
-
-    // <img class="iiJ4W">
+    // Create the emoji image
     const img = document.createElement('img');
-    img.className = 'iiJ4W';
     img.setAttribute('draggable', 'false');
-    img.setAttribute('data-emoji', emojiValue);
+    img.style.cssText = `
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    `;
 
     if (emoji.isImage) {
       // For custom images, use the uploaded image
       img.src = emoji.emoji;
       img.alt = emoji.shortcode;
-      img.setAttribute('aria-label', emoji.shortcode);
     } else {
       // For emoji characters, try to use Google's emoji CDN
       const codePoint = emoji.emoji.codePointAt(0).toString(16);
-      img.src = `https://fonts.gstatic.com/s/e/notoemoji/16.0/${codePoint}/512.png=s48`;
+      img.src = `https://fonts.gstatic.com/s/e/notoemoji/16.0/${codePoint}/512.png`;
       img.alt = emoji.emoji;
-      img.setAttribute('aria-label', emoji.emoji);
     }
 
-    // Add click handler - DON'T prevent default or stop propagation
-    // Let Google's handlers run too
+    // Add click handler
     button.addEventListener('click', () => {
       console.log('🖱️ Custom emoji clicked:', emoji);
-
-      // Trigger our custom animation
       triggerCustomReaction(emoji);
-
-      // Try to trigger Google Meet's internal reaction system
-      // by dispatching a custom event that mimics their system
-      const clickEvent = new MouseEvent('click', {
-        view: window,
-        bubbles: true,
-        cancelable: true
-      });
-
-      // Also try to find and trigger any Google Meet reaction handlers
-      button.dispatchEvent(clickEvent);
-    }, false);
+    });
 
     // Assemble the structure
-    button.appendChild(rippleDiv1);
-    button.appendChild(rippleDiv2);
     button.appendChild(img);
-    tooltipWrapper.appendChild(button);
-    dataEmojiDiv.appendChild(tooltipWrapper);
-    middleContainer.appendChild(dataEmojiDiv);
-    outerContainer.appendChild(middleContainer);
+    container.appendChild(button);
 
     // Insert the custom emoji container into the toolbar
-    toolbar.appendChild(outerContainer);
-    console.log('✅ Custom emoji injected into reactions bar');
-
-    // Debug: Log the element details
-    console.log('📍 Injected element:', outerContainer);
-    console.log('📍 Parent toolbar:', toolbar);
-    console.log('📍 Computed style:', window.getComputedStyle(outerContainer).display);
+    toolbar.appendChild(container);
+    console.log(`✅ Custom emoji ${index + 1}/${customEmojis.length} injected into reactions bar`);
+    console.log('📍 Container element:', container);
   });
+
+  console.log('🎉 Finished injecting all custom emojis. Total in toolbar:', toolbar.querySelectorAll('.custom-emoji-container').length);
 
   // Watch this toolbar for changes and re-inject if needed
   if (lastInjectedToolbar !== toolbar) {
